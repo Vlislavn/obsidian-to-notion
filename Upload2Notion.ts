@@ -28,16 +28,16 @@ export class Upload2Notion {
 
 	// 因为需要解析notion的block进行对比，非常的麻烦，
 	// 暂时就直接删除，新建一个page
-	async updatePage(notionID:string, title:string, allowTags:boolean, tags:string[], childArr:any) {
+	async updatePage(notionPageId: string, title: string, allowTags: boolean, tags: string[], file2Block: any[]): Promise<any> {
 		await this.deletePage(notionID)
 		const res = await this.createPage(title, allowTags, tags, childArr)
 		return res
 	}
 
-	async createPage(title:string, allowTags:boolean, tags:string[], childArr: any) {
+	async createPage(notionPageId: string, title: string, allowTags: boolean, tags: string[], file2Block: any[]): Promise<any> {
 		const bodyString:any = {
 			parent: {
-				database_id: this.app.settings.databaseID
+				database_id: notionPageId
 			},
 			properties: {
 				Name: {
@@ -85,7 +85,8 @@ export class Upload2Notion {
 		}
 	}
 
-	async syncMarkdownToNotion(title:string, allowTags:boolean, tags:string[], markdown: string, nowFile: TFile, app:App, settings:any): Promise<any> {
+	async syncMarkdownToNotion(title: string, allowTags: boolean, tags: string[], markdown: string, nowFile: TFile, app: App, settings: any, notionPageId: string): Promise<any> {
+    // ...тело функции...
 		let res:any
 		const yamlObj:any = yamlFrontMatter.loadFront(markdown);
 		const __content = yamlObj.__content
@@ -94,9 +95,9 @@ export class Upload2Notion {
 		const notionID = frontmasster ? frontmasster.notionID : null
 
 		if(notionID){
-				res = await this.updatePage(notionID, title, allowTags, tags, file2Block);
+				res = await this.updatePage(notionPageId, title, allowTags, tags, file2Block);
 		} else {
-			 	res = await this.createPage(title, allowTags, tags, file2Block);
+			 	res = await this.createPage(notionPageId, title, allowTags, tags, file2Block);
 		}
 		if (res.status === 200) {
 			await this.updateYamlInfo(markdown, nowFile, res, app, settings)
