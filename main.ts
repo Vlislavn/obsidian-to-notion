@@ -39,63 +39,89 @@ const DEFAULT_SETTINGS: PluginSettings = {
 
 export default class ObsidianSyncNotionPlugin extends Plugin {
 	settings: PluginSettings;
-	async onload() {
-		await this.loadSettings();
-		addIcons();
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon(
-			"notion-logo",
-			"Share to notion",
-			async (evt: MouseEvent) => {
-				// Called when the user clicks the icon.
-				this.upload();
-			}
-		);
+async onload() {
+    await this.loadSettings();
+    addIcons();
+    const ribbonIconEl = this.addRibbonIcon(
+        "notion-logo",
+        "Share to notion",
+        async (evt: MouseEvent) => {
+            this.upload();
+        }
+    );
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		// statusBarItemEl.setText("share to notion");
+    const statusBarItemEl = this.addStatusBarItem();
 
-		this.addCommand({
-			id: "share-to-notion",
-			name: "share to notion",
-			editorCallback: async (editor: Editor, view: MarkdownView) => {
-				this.upload()
-			},
-		});
+    this.addCommand({
+        id: 'sync-to-notion',
+        name: 'Sync to Notion',
+        callback: async () => {
+            const notionPageId = await this.promptForNotionPageId();
+            if (!notionPageId) {
+                return;
+            }
 
+            const activeFile = this.app.workspace.getActiveFile();
+            if (!activeFile) {
+                new Notice('No active file to sync with Notion.');
+                return;
+            }
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+            try {
+                const result = await this.upload(notionPageId, activeFile);
+                new Notice(result.message);
+            } catch (error) {
+                console.error('Error syncing with Notion:', error);
+                new Notice('Error syncing with Notion.');
+            }
+        },
+    });
 
-	}
+    this.addSettingTab(new SampleSettingTab(this.app, this));
+}
+
+async promptForNotionPageId(): Promise<string | null> {
+    return new Promise((resolve) => {
+        const { contentEl } = new Prompt(this.app, 'Enter Notion Page ID');
+        const input = contentEl.createEl('input', { type: 'text' });
+
+        contentEl.createEl('button', { text: 'Submit' }).addEventListener('click', () => {
+            const notionPageId = input.value.trim();
+            if (notionPageId) {
+                resolve(notionPageId);
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
 
 	onunload() {}
 
-	async upload(){
-		const { notionAPI, databaseID, allowTags } = this.settings;
-				if (notionAPI === "" || databaseID === "") {
-					new Notice(
-						"Please set up the notion API and database ID in the settings tab."
-					);
-					return;
-				}
-				const { markDownData, nowFile, tags } =await this.getNowFileMarkdownContent(this.app);
+async upload(notionPageId: string, activeFile: TFile){
+    const { notionAPI, databaseID, allowTags } = this.settings;
+    if (notionAPI === "" || databaseID === "") {
+        new Notice(
+            "Please set up the notion API and database ID in the settings tab."
+        );
+        return;
+    }
+    const { markDownData, nowFile, tags } =await this.getNowFileMarkdownContent(this.app, activeFile);
 
+    if (markDownData) {
+        const { basename } = nowFile;
+        const upload = new Upload2Notion(this);
+        const res = await upload.syncMarkdownToNotion(basename, allowTags, tags, markDownData, nowFile, this.app, this.settings, notionPageId)
+        if(res.status === 200){
+            new Notice(`${langConfig["sync-success"]}${basename}`)
+        }else {
+            new Notice(`${langConfig["sync-fail"]}${basename}`, 5000)
+        }
+    }
+}
 
-				if (markDownData) {
-					const { basename } = nowFile;
-					const upload = new Upload2Notion(this);
-					const res = await upload.syncMarkdownToNotion(basename, allowTags, tags, markDownData, nowFile, this.app, this.settings)
-					if(res.status === 200){
-						new Notice(`${langConfig["sync-success"]}${basename}`)
-					}else {
-						new Notice(`${langConfig["sync-fail"]}${basename}`, 5000)
-					}
-				}
-	}
-
-	async getNowFileMarkdownContent(app: App) {
+	async getNowFileMarkdownContent(app: App, nowFile: TFile) {
 		const nowFile = app.workspace.getActiveFile();
 		const { allowTags } = this.settings;
 		let tags = []
